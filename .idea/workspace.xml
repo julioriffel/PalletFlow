@@ -7,7 +7,7 @@
           <value>
             <AIAssistantStoredInstruction>
               <option name="actionId" value="AIAssistant.VCS.GenerateCommitMessage" />
-              <option name="content" value="[$GIT_BRANCH_NAME] Avoid overly verbose descriptions or unnecessary details." />
+              <option name="content" value="[$GIT_BRANCH_NAME] Avoid overly verbose descriptions or unnecessary details.$GIT_BRANCH_NAME" />
             </AIAssistantStoredInstruction>
           </value>
         </entry>
@@ -18,10 +18,11 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="dee04b9a-5836-4e50-8f55-4c33242a4100" name="Changes" comment="master: Add IntelliJ IDEA project configuration files">
-      <change afterPath="$PROJECT_DIR$/docs/Como_é_calculado_o_tempo_para_inicio_de.md" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/heatmap_gui.py" afterDir="false" />
+    <list default="true" id="dee04b9a-5836-4e50-8f55-4c33242a4100" name="Changes" comment="master: Add heatmap-based GUI for conveyor belt simulation">
+      <change beforePath="$PROJECT_DIR$/.idea/misc.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/misc.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/test.iml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/test.iml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/heatmap_gui.py" beforeDir="false" afterPath="$PROJECT_DIR$/heatmap_gui.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -52,30 +53,32 @@
     <option name="hideEmptyMiddlePackages" value="true" />
     <option name="showLibraryContents" value="true" />
   </component>
-  <component name="PropertiesComponent"><![CDATA[{
-  "keyToString": {
-    "ModuleVcsDetector.initialDetectionPerformed": "true",
-    "Python.abcddd.executor": "Run",
-    "Python.app.executor": "Run",
-    "Python.heatmap_gui.executor": "Run",
-    "Python.manual.executor": "Run",
-    "Python.manual_matplot.executor": "Run",
-    "RunOnceActivity.ShowReadmeOnStart": "true",
-    "RunOnceActivity.TerminalTabsStorage.copyFrom.TerminalArrangementManager.252": "true",
-    "RunOnceActivity.git.unshallow": "true",
-    "data.grip.promo.notification.shown": "true",
-    "git-widget-placeholder": "master",
-    "junie.onboarding.icon.badge.shown": "true",
-    "node.js.detected.package.eslint": "true",
-    "node.js.detected.package.tslint": "true",
-    "node.js.selected.package.eslint": "(autodetect)",
-    "node.js.selected.package.tslint": "(autodetect)",
-    "nodejs_package_manager_path": "npm",
-    "settings.editor.selected.configurable": "ml.llm.LLMConfigurable",
-    "to.speed.mode.migration.done": "true",
-    "vue.rearranger.settings.migration": "true"
+  <component name="PropertiesComponent">{
+  &quot;keyToString&quot;: {
+    &quot;ModuleVcsDetector.initialDetectionPerformed&quot;: &quot;true&quot;,
+    &quot;Python.abcddd.executor&quot;: &quot;Run&quot;,
+    &quot;Python.app.executor&quot;: &quot;Run&quot;,
+    &quot;Python.heatmap_gui.executor&quot;: &quot;Run&quot;,
+    &quot;Python.manual.executor&quot;: &quot;Run&quot;,
+    &quot;Python.manual_matplot.executor&quot;: &quot;Run&quot;,
+    &quot;RunOnceActivity.ShowReadmeOnStart&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.TerminalTabsStorage.copyFrom.TerminalArrangementManager.252&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.git.unshallow&quot;: &quot;true&quot;,
+    &quot;SHARE_PROJECT_CONFIGURATION_FILES&quot;: &quot;true&quot;,
+    &quot;data.grip.promo.notification.shown&quot;: &quot;true&quot;,
+    &quot;git-widget-placeholder&quot;: &quot;master&quot;,
+    &quot;junie.onboarding.icon.badge.shown&quot;: &quot;true&quot;,
+    &quot;last_opened_file_path&quot;: &quot;/home/nikos/nikos_projects/funds_integration&quot;,
+    &quot;node.js.detected.package.eslint&quot;: &quot;true&quot;,
+    &quot;node.js.detected.package.tslint&quot;: &quot;true&quot;,
+    &quot;node.js.selected.package.eslint&quot;: &quot;(autodetect)&quot;,
+    &quot;node.js.selected.package.tslint&quot;: &quot;(autodetect)&quot;,
+    &quot;nodejs_package_manager_path&quot;: &quot;npm&quot;,
+    &quot;settings.editor.selected.configurable&quot;: &quot;ml.llm.LLMConfigurable&quot;,
+    &quot;to.speed.mode.migration.done&quot;: &quot;true&quot;,
+    &quot;vue.rearranger.settings.migration&quot;: &quot;true&quot;
   }
-}]]></component>
+}</component>
   <component name="RecentsManager">
     <key name="MoveFile.RECENT_KEYS">
       <recent name="$PROJECT_DIR$/docs" />
@@ -207,14 +210,6 @@
       </list>
     </recent_temporary>
   </component>
-  <component name="SharedIndexes">
-    <attachedChunks>
-      <set>
-        <option value="bundled-js-predefined-d6986cc7102b-e03c56caf84a-JavaScript-PY-252.23892.515" />
-        <option value="bundled-python-sdk-7e47963ff851-f0eec537fc84-com.jetbrains.pycharm.pro.sharedIndexes.bundled-PY-252.23892.515" />
-      </set>
-    </attachedChunks>
-  </component>
   <component name="TaskManager">
     <task active="true" id="Default" summary="Default task">
       <changelist id="dee04b9a-5836-4e50-8f55-4c33242a4100" name="Changes" comment="" />
@@ -226,7 +221,11 @@
       <workItem from="1756266049124" duration="2573000" />
       <workItem from="1756302754089" duration="4657000" />
       <workItem from="1756338021989" duration="1268000" />
-      <workItem from="1756341692714" duration="13054000" />
+      <workItem from="1756341692714" duration="13132000" />
+      <workItem from="1756385250298" duration="1235000" />
+      <workItem from="1756388938806" duration="1411000" />
+      <workItem from="1756399362258" duration="2894000" />
+      <workItem from="1756469081474" duration="1226000" />
     </task>
     <task id="LOCAL-00001" summary="master: Add detailed production line simulation guide and algorithmic explanations">
       <option name="closed" value="true" />
@@ -244,7 +243,15 @@
       <option name="project" value="LOCAL" />
       <updated>1756347989288</updated>
     </task>
-    <option name="localTasksCounter" value="3" />
+    <task id="LOCAL-00003" summary="master: Add heatmap-based GUI for conveyor belt simulation">
+      <option name="closed" value="true" />
+      <created>1756356290325</created>
+      <option name="number" value="00003" />
+      <option name="presentableId" value="LOCAL-00003" />
+      <option name="project" value="LOCAL" />
+      <updated>1756356290325</updated>
+    </task>
+    <option name="localTasksCounter" value="4" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -264,7 +271,8 @@
   <component name="VcsManagerConfiguration">
     <MESSAGE value="master: Add detailed production line simulation guide and algorithmic explanations" />
     <MESSAGE value="master: Add IntelliJ IDEA project configuration files" />
-    <option name="LAST_COMMIT_MESSAGE" value="master: Add IntelliJ IDEA project configuration files" />
+    <MESSAGE value="master: Add heatmap-based GUI for conveyor belt simulation" />
+    <option name="LAST_COMMIT_MESSAGE" value="master: Add heatmap-based GUI for conveyor belt simulation" />
   </component>
   <component name="XDebuggerManager">
     <breakpoint-manager>
@@ -280,7 +288,7 @@
     <SUITE FILE_PATH="coverage/test$manual.coverage" NAME="manual Coverage Results" MODIFIED="1756267769637" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
     <SUITE FILE_PATH="coverage/test$app.coverage" NAME="app Coverage Results" MODIFIED="1756345619467" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
     <SUITE FILE_PATH="coverage/test$manual_matplot.coverage" NAME="manual_matplot Coverage Results" MODIFIED="1756267760078" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
-    <SUITE FILE_PATH="coverage/test$heatmap_gui.coverage" NAME="heatmap_gui Coverage Results" MODIFIED="1756355897267" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
+    <SUITE FILE_PATH="coverage/test$heatmap_gui.coverage" NAME="heatmap_gui Coverage Results" MODIFIED="1756469735209" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
     <SUITE FILE_PATH="coverage/test$abcddd.coverage" NAME="abcddd Coverage Results" MODIFIED="1756267419890" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
   </component>
 </project>

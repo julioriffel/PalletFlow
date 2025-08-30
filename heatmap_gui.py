@@ -500,6 +500,20 @@ class HeatmapApp(tk.Tk):
         title = tk.Label(self.log_frame, text="Log de Lotes", font=("Arial", 11, "bold"), bg="#f7f7f7")
         title.pack(side=tk.TOP, anchor="w", padx=6, pady=(6, 2))
         self.log_text = tk.Text(self.log_frame, width=40, height=max(10, height // 20), wrap=tk.WORD, state=tk.DISABLED, bg="#fcfcfc")
+        # Enable text selection and copying with standard shortcuts even when disabled
+        # Allow selecting text by mouse drag, and copying via Ctrl+C or context menu
+        # Bind Ctrl+C and Command+C (macOS) to copy selection
+        self.log_text.bind("<Control-c>", lambda e: self._copy_log_selection())
+        self.log_text.bind("<Command-c>", lambda e: self._copy_log_selection())
+        self.log_text.bind("<Control-a>", lambda e: (self.log_text.tag_add("sel", "1.0", "end-1c"), "break"))
+        self.log_text.bind("<Command-a>", lambda e: (self.log_text.tag_add("sel", "1.0", "end-1c"), "break"))
+        # Context menu (right-click)
+        self.log_menu = tk.Menu(self.log_frame, tearoff=0)
+        self.log_menu.add_command(label="Copiar", command=self._copy_log_selection)
+        self.log_menu.add_command(label="Copiar tudo", command=self._copy_all_logs)
+        self.log_text.bind("<Button-3>", self._show_log_context_menu)
+        self.log_text.bind("<Control-Button-1>", self._show_log_context_menu)
+
         self.log_scroll = tk.Scrollbar(self.log_frame, command=self.log_text.yview)
         self.log_text.configure(yscrollcommand=self.log_scroll.set)
         self.log_text.pack(side=tk.LEFT, fill=tk.Y, expand=False, padx=(6, 0), pady=(0, 6))
@@ -512,6 +526,64 @@ class HeatmapApp(tk.Tk):
         self.log_text.insert(tk.END, text + "\n")
         self.log_text.see(tk.END)
         self.log_text.configure(state=tk.DISABLED)
+        # Keep selection visible even when disabled
+        try:
+            self.log_text.configure(inactiveselectbackground=self.log_text.cget('selectbackground'))
+        except Exception:
+            pass
+
+    def _clear_logs(self) -> None:
+        if not hasattr(self, 'log_text'):
+            return
+        self.log_text.configure(state=tk.NORMAL)
+        self.log_text.delete('1.0', tk.END)
+        self.log_text.configure(state=tk.DISABLED)
+        try:
+            self.log_text.configure(inactiveselectbackground=self.log_text.cget('selectbackground'))
+        except Exception:
+            pass
+
+    # ----- Log copy helpers -----
+    def _copy_log_selection(self) -> None:
+        try:
+            sel_start = self.log_text.index("sel.first")
+            sel_end = self.log_text.index("sel.last")
+        except Exception:
+            return  # No selection
+        try:
+            text = self.log_text.get(sel_start, sel_end)
+            self.clipboard_clear()
+            self.clipboard_append(text)
+        except Exception:
+            pass
+
+    def _copy_all_logs(self) -> None:
+        try:
+            # Exclude trailing newline
+            text = self.log_text.get("1.0", "end-1c")
+            if not text:
+                return
+            self.clipboard_clear()
+            self.clipboard_append(text)
+        except Exception:
+            pass
+
+    def _show_log_context_menu(self, event) -> None:
+        try:
+            # Enable/disable 'Copiar' based on selection presence
+            has_sel = True
+            try:
+                _ = self.log_text.index("sel.first")
+                _ = self.log_text.index("sel.last")
+            except Exception:
+                has_sel = False
+            if has_sel:
+                self.log_menu.entryconfig(0, state=tk.NORMAL)
+            else:
+                self.log_menu.entryconfig(0, state=tk.DISABLED)
+            self.log_menu.tk.call("tk_popup", self.log_menu, event.x_root, event.y_root)
+        except Exception:
+            pass
 
     def _snapshot_status(self, at_minute: int) -> Dict[str, Dict[str, int]]:
         counters: Dict[str, Dict[str, int]] = {t: {"total": 0, "maduros": 0, "maturacao": 0} for t in ["A", "B", "C"]}
@@ -636,8 +708,10 @@ class HeatmapApp(tk.Tk):
         # Reset the grid to vazio
         initial_grid: GridData = [[('vazio', 0) for _ in range(self.COLS)] for _ in range(self.ROWS)]
         self.update_grid(initial_grid)
-        # Auto-start again
-        self.start()
+        # Clear logs as part of restart
+        self._clear_logs()
+        # Não iniciar automaticamente após reiniciar; o usuário deve clicar em Iniciar
+        # (deixe o estado parado)
 
     def _schedule_cycle(self) -> None:
         if not self.running:
@@ -725,11 +799,8 @@ if __name__ == "__main__":
     # Simple demo: press the window to refresh with new random data
     app = HeatmapApp(cell_size=40)
     app.update_grid(demo_data())
-    # Auto-start simulation and timer so the contador de tempo works immediately
-    try:
-        app.start()
-    except Exception:
-        pass
+    # Não iniciar automaticamente: aguarda o usuário clicar em Iniciar
+    # (mantemos o bloco try/except anterior removido, pois não há chamada de start aqui)
 
     def refresh(_event=None):
         app.update_grid(demo_data())
