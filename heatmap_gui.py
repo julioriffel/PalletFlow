@@ -7,8 +7,8 @@ import csv
 from typing import List, Tuple, Literal, Dict, Optional, Any
 from simulation import SimulationEngine, State, CellData, GridData, ALLOCATION_STRATEGIES, CONSUMPTION_STRATEGIES
 
-# Types are imported from simulation.py
 
+# Types are imported from simulation.py
 
 
 class HeatmapApp(tk.Tk):
@@ -78,22 +78,27 @@ class HeatmapApp(tk.Tk):
         self.x_var = tk.StringVar(value="24")
         vcmd = (self.register(self._validate_int), "%P")
         self.x_entry = tk.Entry(self.controls_frame, width=6, textvariable=self.x_var,
-                                 validate="key", validatecommand=vcmd)
+                                validate="key", validatecommand=vcmd)
         self.x_entry.pack(side=tk.LEFT, padx=(2, 10))
 
         # Strategy selection
         tk.Label(self.controls_frame, text="Alocação:", bg="#f0f0f0").pack(side=tk.LEFT)
-        self.alloc_var = tk.StringVar(value=next(iter(ALLOCATION_STRATEGIES.keys())))
+        # Keep stable order of keys to avoid string normalization issues
+        self.alloc_keys = list(ALLOCATION_STRATEGIES.keys())
+        self.alloc_var = tk.StringVar(value=self.alloc_keys[0])
         self.alloc_combo = ttk.Combobox(self.controls_frame, width=22, state="readonly",
                                         textvariable=self.alloc_var,
-                                        values=list(ALLOCATION_STRATEGIES.keys()))
+                                        values=self.alloc_keys)
+        self.alloc_combo.current(0)
         self.alloc_combo.pack(side=tk.LEFT, padx=(2, 10))
 
         tk.Label(self.controls_frame, text="Consumo:", bg="#f0f0f0").pack(side=tk.LEFT)
-        self.cons_var = tk.StringVar(value=next(iter(CONSUMPTION_STRATEGIES.keys())))
+        self.cons_keys = list(CONSUMPTION_STRATEGIES.keys())
+        self.cons_var = tk.StringVar(value=self.cons_keys[0])
         self.cons_combo = ttk.Combobox(self.controls_frame, width=22, state="readonly",
                                        textvariable=self.cons_var,
-                                       values=list(CONSUMPTION_STRATEGIES.keys()))
+                                       values=self.cons_keys)
+        self.cons_combo.current(0)
         self.cons_combo.pack(side=tk.LEFT, padx=(2, 10))
 
         # Control buttons
@@ -109,7 +114,7 @@ class HeatmapApp(tk.Tk):
 
         # Speed buttons
         tk.Label(self.controls_frame, text="Velocidade:", bg="#f0f0f0").pack(side=tk.LEFT, padx=(10, 2))
-        self.speed_values = [1, 2, 4, 8, 16, 32]
+        self.speed_values = [1, 2, 4, 8, 16, 32, 64]
         self.speed = 1
         self.speed_buttons: Dict[int, tk.Button] = {}
         for val in self.speed_values:
@@ -125,9 +130,9 @@ class HeatmapApp(tk.Tk):
         self._cycle_after_id: Optional[str] = None
         self._timer_after_id: Optional[str] = None
         self._start_monotonic: float = 0.0  # kept for compatibility (unused for simulated time)
-        self._elapsed_accum: float = 0.0    # kept for compatibility (unused for simulated time)
-        self._sim_minutes_accum: float = 0.0    # simulated minutes accumulated based on X and speed
-        self._last_timer_monotonic: float = 0.0 # timestamp of the last timer update
+        self._elapsed_accum: float = 0.0  # kept for compatibility (unused for simulated time)
+        self._sim_minutes_accum: float = 0.0  # simulated minutes accumulated based on X and speed
+        self._last_timer_monotonic: float = 0.0  # timestamp of the last timer update
 
         # Simulation engine instance (created on start)
         self.engine: Optional[SimulationEngine] = None
@@ -155,9 +160,9 @@ class HeatmapApp(tk.Tk):
         # Define colors for states
         self.colors = {
             'vazio': '#E0E0E0',  # light gray
-            'A': '#4FC3F7',      # light blue
-            'B': '#81C784',      # light green
-            'C': '#FFB74D',      # orange
+            'A': '#4FC3F7',  # light blue
+            'B': '#81C784',  # light green
+            'C': '#FFB74D',  # orange
         }
 
         # Prepare storage for rect and text item ids for quick updates
@@ -168,7 +173,7 @@ class HeatmapApp(tk.Tk):
         initial_grid: GridData = [[('vazio', 0) for _ in range(self.COLS)] for _ in range(self.ROWS)]
         self._draw_grid(initial_grid)
         self._update_counters(initial_grid)
-        
+
         # Initialize log panel content
         self._append_log("Aplicação inicializada. Aguarde o início de um lote para registrar o status.")
 
@@ -244,7 +249,8 @@ class HeatmapApp(tk.Tk):
 
         if self.engine is not None:
             now_min = self.engine.now
-            # Count items directly from belts to respect real pallets and their maturity
+            # Count items directly from belts (dedicated + dynamic) to respect real pallets and their maturity
+            # Dedicated rows by origin
             for origin in ["A", "B", "C"]:
                 for row in self.engine.origin_rows[origin]:
                     for p in self.engine.belts[row]:
@@ -253,6 +259,14 @@ class HeatmapApp(tk.Tk):
                             counters[p.origin]["maduros"] += 1
                         else:
                             counters[p.origin]["maturacao"] += 1
+            # Shared dynamic rows: attribute pallets to their own origin to avoid double counting
+            for row in getattr(self.engine, 'dynamic_rows', []):
+                for p in self.engine.belts[row]:
+                    counters[p.origin]["total"] += 1
+                    if p.is_mature(now_min):
+                        counters[p.origin]["maduros"] += 1
+                    else:
+                        counters[p.origin]["maturacao"] += 1
         else:
             # Fallback heuristic from grid (used only in demo mode without engine)
             for r in range(self.ROWS):
@@ -288,7 +302,8 @@ class HeatmapApp(tk.Tk):
         self.log_frame.pack(side=tk.RIGHT, fill=tk.Y)
         title = tk.Label(self.log_frame, text="Log de Lotes", font=("Arial", 11, "bold"), bg="#f7f7f7")
         title.pack(side=tk.TOP, anchor="w", padx=6, pady=(6, 2))
-        self.log_text = tk.Text(self.log_frame, width=40, height=max(10, height // 20), wrap=tk.WORD, state=tk.DISABLED, bg="#fcfcfc")
+        self.log_text = tk.Text(self.log_frame, width=40, height=max(10, height // 20), wrap=tk.WORD, state=tk.DISABLED,
+                                bg="#fcfcfc")
         # Enable text selection and copying with standard shortcuts even when disabled
         # Allow selecting text by mouse drag, and copying via Ctrl+C or context menu
         # Bind Ctrl+C and Command+C (macOS) to copy selection
@@ -379,6 +394,7 @@ class HeatmapApp(tk.Tk):
         if self.engine is None:
             return counters
         for origin in ["A", "B", "C"]:
+            # Dedicated rows for each origin
             for row in self.engine.origin_rows[origin]:
                 for p in self.engine.belts[row]:
                     counters[p.origin]["total"] += 1
@@ -386,6 +402,14 @@ class HeatmapApp(tk.Tk):
                         counters[p.origin]["maduros"] += 1
                     else:
                         counters[p.origin]["maturacao"] += 1
+        # Shared dynamic rows: count pallets by their own origin
+        for row in getattr(self.engine, 'dynamic_rows', []):
+            for p in self.engine.belts[row]:
+                counters[p.origin]["total"] += 1
+                if p.is_mature(at_minute):
+                    counters[p.origin]["maduros"] += 1
+                else:
+                    counters[p.origin]["maturacao"] += 1
         return counters
 
     def _process_engine_events(self) -> None:
@@ -401,9 +425,11 @@ class HeatmapApp(tk.Tk):
                 lot_size = ev.get('lot_size', 0)
                 time_str = self._format_minutes(t)
                 snap = self._snapshot_status(t)
+
                 def fmt(o: str) -> str:
                     c = snap[o]
                     return f"{o} T={c['total']} M={c['maduros']} EmM={c['maturacao']}"
+
                 line = f"[{time_str}] Início de lote {origin} (tamanho={lot_size}). Status: " \
                        f"{fmt('A')} | {fmt('B')} | {fmt('C')}"
                 self._append_log(line)
@@ -438,6 +464,7 @@ class HeatmapApp(tk.Tk):
             "Identificação do pallet",
             "Momento de criação",
             "Momento de consumo",
+            "Tempo entre produção e consumo (HH:MM)",
         ]
         try:
             with open(file_path, mode="w", newline="", encoding="utf-8") as f:
@@ -445,12 +472,22 @@ class HeatmapApp(tk.Tk):
                 writer.writerow(headers)
                 for rec in records:
                     consumido = rec.get('consumido_min')
+                    criado = rec.get('criado_min')
+                    if consumido is None or criado is None:
+                        tempo_fmt = ''
+                    else:
+                        try:
+                            delta = max(0, int(consumido) - int(criado))
+                            tempo_fmt = f"{delta // 60:02d}:{delta % 60:02d}"
+                        except Exception:
+                            tempo_fmt = ''
                     writer.writerow([
                         rec.get('tipo', ''),
                         rec.get('lote', ''),
                         rec.get('pallet_id', ''),
                         rec.get('criado_min', ''),
                         '' if consumido is None else consumido,
+                        tempo_fmt,
                     ])
             messagebox.showinfo("Exportar CSV", f"Log exportado com sucesso para:\n{file_path}")
         except Exception as e:
@@ -484,8 +521,19 @@ class HeatmapApp(tk.Tk):
 
     def _create_selected_strategies(self):
         try:
-            alloc_cls = ALLOCATION_STRATEGIES.get(self.alloc_var.get())
-            cons_cls = CONSUMPTION_STRATEGIES.get(self.cons_var.get())
+            # Prefer resolving by index to avoid any Unicode normalization mismatch in displayed text
+            a_idx = getattr(self.alloc_combo, 'current', lambda: -1)()
+            c_idx = getattr(self.cons_combo, 'current', lambda: -1)()
+            if isinstance(a_idx, int) and 0 <= a_idx < len(getattr(self, 'alloc_keys', [])):
+                a_key = self.alloc_keys[a_idx]
+            else:
+                a_key = self.alloc_var.get()
+            if isinstance(c_idx, int) and 0 <= c_idx < len(getattr(self, 'cons_keys', [])):
+                c_key = self.cons_keys[c_idx]
+            else:
+                c_key = self.cons_var.get()
+            alloc_cls = ALLOCATION_STRATEGIES.get(a_key)
+            cons_cls = CONSUMPTION_STRATEGIES.get(c_key)
             alloc = alloc_cls() if alloc_cls else None
             cons = cons_cls() if cons_cls else None
             return alloc, cons
@@ -530,6 +578,21 @@ class HeatmapApp(tk.Tk):
                     self.engine.allocation_strategy = alloc
                 if cons is not None:
                     self.engine.consumption_strategy = cons
+            # Log which strategies are active for transparency/debugging
+            try:
+                a_idx = self.alloc_combo.current()
+                c_idx = self.cons_combo.current()
+                if isinstance(a_idx, int) and 0 <= a_idx < len(getattr(self, 'alloc_keys', [])):
+                    a_label = self.alloc_keys[a_idx]
+                else:
+                    a_label = self.alloc_var.get()
+                if isinstance(c_idx, int) and 0 <= c_idx < len(getattr(self, 'cons_keys', [])):
+                    c_label = self.cons_keys[c_idx]
+                else:
+                    c_label = self.cons_var.get()
+                self._append_log(f"Estratégias ativas — Alocação: {a_label} | Consumo: {c_label}")
+            except Exception:
+                pass
             self.running = True
             # Disable strategy selectors while running
             self._set_strategy_controls_enabled(False)
@@ -667,11 +730,14 @@ if __name__ == "__main__":
     # Simple demo: press the window to refresh with new random data
     app = HeatmapApp(cell_size=40)
     app.update_grid(demo_data())
+
+
     # Não iniciar automaticamente: aguarda o usuário clicar em Iniciar
     # (mantemos o bloco try/except anterior removido, pois não há chamada de start aqui)
 
     def refresh(_event=None):
         app.update_grid(demo_data())
+
 
     app.bind("<Button-1>", refresh)
     app.mainloop()

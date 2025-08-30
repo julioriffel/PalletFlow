@@ -18,14 +18,10 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="dee04b9a-5836-4e50-8f55-4c33242a4100" name="Changes" comment="master: Enable text selection and copying in log view, add context menu, and improve restart behavior">
-      <change afterPath="$PROJECT_DIR$/.idea/csv-editor.xml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/simulation.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.gitignore" beforeDir="false" afterPath="$PROJECT_DIR$/.gitignore" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/misc.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/misc.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/test.iml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/test.iml" afterDir="false" />
+    <list default="true" id="dee04b9a-5836-4e50-8f55-4c33242a4100" name="Changes" comment="master: Modularize simulation logic into `simulation.py`, introduce strategy selection in the GUI, and add CSV export functionality">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/heatmap_gui.py" beforeDir="false" afterPath="$PROJECT_DIR$/heatmap_gui.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/simulation.py" beforeDir="false" afterPath="$PROJECT_DIR$/simulation.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -230,7 +226,7 @@
       <workItem from="1756388938806" duration="1411000" />
       <workItem from="1756399362258" duration="2894000" />
       <workItem from="1756469081474" duration="1226000" />
-      <workItem from="1756516174600" duration="3587000" />
+      <workItem from="1756516174600" duration="6280000" />
     </task>
     <task id="LOCAL-00001" summary="master: Add detailed production line simulation guide and algorithmic explanations">
       <option name="closed" value="true" />
@@ -264,7 +260,15 @@
       <option name="project" value="LOCAL" />
       <updated>1756516354807</updated>
     </task>
-    <option name="localTasksCounter" value="5" />
+    <task id="LOCAL-00005" summary="master: Modularize simulation logic into `simulation.py`, introduce strategy selection in the GUI, and add CSV export functionality">
+      <option name="closed" value="true" />
+      <created>1756519836430</created>
+      <option name="number" value="00005" />
+      <option name="presentableId" value="LOCAL-00005" />
+      <option name="project" value="LOCAL" />
+      <updated>1756519836430</updated>
+    </task>
+    <option name="localTasksCounter" value="6" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -286,7 +290,8 @@
     <MESSAGE value="master: Add IntelliJ IDEA project configuration files" />
     <MESSAGE value="master: Add heatmap-based GUI for conveyor belt simulation" />
     <MESSAGE value="master: Enable text selection and copying in log view, add context menu, and improve restart behavior" />
-    <option name="LAST_COMMIT_MESSAGE" value="master: Enable text selection and copying in log view, add context menu, and improve restart behavior" />
+    <MESSAGE value="master: Modularize simulation logic into `simulation.py`, introduce strategy selection in the GUI, and add CSV export functionality" />
+    <option name="LAST_COMMIT_MESSAGE" value="master: Modularize simulation logic into `simulation.py`, introduce strategy selection in the GUI, and add CSV export functionality" />
   </component>
   <component name="XDebuggerManager">
     <breakpoint-manager>
@@ -307,8 +312,8 @@
     <SUITE FILE_PATH="coverage/test$manual.coverage" NAME="manual Coverage Results" MODIFIED="1756267769637" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
     <SUITE FILE_PATH="coverage/test$app.coverage" NAME="app Coverage Results" MODIFIED="1756345619467" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
     <SUITE FILE_PATH="coverage/test$manual_matplot.coverage" NAME="manual_matplot Coverage Results" MODIFIED="1756267760078" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
-    <SUITE FILE_PATH="coverage/test$heatmap_gui.coverage" NAME="heatmap_gui Coverage Results" MODIFIED="1756519682943" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
+    <SUITE FILE_PATH="coverage/test$heatmap_gui.coverage" NAME="heatmap_gui Coverage Results" MODIFIED="1756522134709" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
     <SUITE FILE_PATH="coverage/test$abcddd.coverage" NAME="abcddd Coverage Results" MODIFIED="1756267419890" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
-    <SUITE FILE_PATH="coverage/test$simulation.coverage" NAME="simulation Coverage Results" MODIFIED="1756518378548" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
+    <SUITE FILE_PATH="coverage/test$simulation.coverage" NAME="simulation Coverage Results" MODIFIED="1756520087018" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
   </component>
 </project>

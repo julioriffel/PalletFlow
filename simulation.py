@@ -54,37 +54,92 @@ class RoundRobinAllocation:
         return None
 
 
+class DedicatedThreePlusDynamicAllocation:
+    """
+    3 dedicated belts per type, plus shared dynamic belts (rows 3,7,11) allocated according to need.
+    Always prioritize keeping pallets of the same lot on the same belt (lot stickiness).
+    Selection order:
+      1) Any belt (dedicated or dynamic) that already contains the next lot id and has free space.
+      2) Dedicated belts: pick the one with most free space.
+      3) Dynamic belts (shared): pick the one with most free space.
+    """
+    def select_belt(self, engine: 'SimulationEngine', origin: State) -> Optional[int]:
+        dedicated = engine.origin_rows[origin]
+        dynamic = engine.dynamic_rows
+        rows = dedicated + dynamic
+        if not dedicated:
+            return None
+        capacity = engine.capacity_per_belt
+        # Infer next lot id without mutating engine state
+        next_lot = engine.peek_next_lot_id(origin)
+        if next_lot is None:
+            next_lot = engine.current_lot_id[origin]
+        # 1) Prefer belts that already contain the same lot and have free space
+        candidates_same_lot: List[int] = []
+        for r in rows:
+            belt = engine.belts[r]
+            if len(belt) >= capacity:
+                continue
+            # Check if any pallet on this belt belongs to the next lot
+            has_same_lot = any(p.lot_id == next_lot and p.origin == origin for p in belt)
+            if has_same_lot:
+                candidates_same_lot.append(r)
+        if candidates_same_lot:
+            # Choose with most free space; tie-break by lower row index
+            best_row = max(candidates_same_lot, key=lambda rr: (capacity - len(engine.belts[rr]), -rr))
+            return best_row
+        # Helper to select most free from a list of rows
+        def select_most_free(from_rows: List[int]) -> Optional[int]:
+            best_r = None
+            best_free = -1
+            for r in from_rows:
+                free = capacity - len(engine.belts[r])
+                if free > best_free:
+                    best_free = free
+                    best_r = r
+            if best_free <= 0:
+                return None
+            return best_r
+        # 2) Dedicated belts
+        pick = select_most_free(dedicated)
+        if pick is not None:
+            return pick
+        # 3) Dynamic belts (shared)
+        return select_most_free(dynamic)
+
+
 class PrioritizedFirstThreeConsumption:
-    """Try first three belts of origin, then the remaining, consuming mature heads only."""
+    """Try dedicated belts first, then shared dynamic belts; consume only head pallets of the active origin that are mature."""
     def consume(self, engine: 'SimulationEngine', origin: State) -> bool:
-        rows = engine.origin_rows[origin]
-        prioritized = rows[:3]
-        others = rows[3:]
-        for r in prioritized:
-            if engine.pop_if_mature_head(r):
+        # Dedicated rows for this origin
+        for r in engine.origin_rows[origin]:
+            if engine.pop_if_mature_head_of_origin(r, origin):
                 return True
-        for r in others:
-            if engine.pop_if_mature_head(r):
+        # Then try dynamic rows shared across types
+        for r in engine.dynamic_rows:
+            if engine.pop_if_mature_head_of_origin(r, origin):
                 return True
         return False
 
 
 class LongestQueueHeadConsumption:
-    """Pick the belt with the longest queue having a mature head; fallback scanning."""
+    """Pick the belt (dedicated or dynamic) with the longest queue whose head is a mature pallet of the active origin; fallback scanning with origin check."""
     def consume(self, engine: 'SimulationEngine', origin: State) -> bool:
-        rows = engine.origin_rows[origin]
-        # Find rows with mature head
+        rows = engine.origin_rows[origin] + engine.dynamic_rows
+        # Find rows with mature head of the same origin
         candidate_rows: List[int] = []
         for r in rows:
-            if engine.belts[r] and engine.belts[r][0].is_mature(engine.now):
-                candidate_rows.append(r)
+            if engine.belts[r]:
+                head = engine.belts[r][0]
+                if head.origin == origin and head.is_mature(engine.now):
+                    candidate_rows.append(r)
         if candidate_rows:
             # Choose the one with the largest queue length
             best_row = max(candidate_rows, key=lambda rr: len(engine.belts[rr]))
-            return engine.pop_if_mature_head(best_row)
-        # Fallback: scan any row for mature head
+            return engine.pop_if_mature_head_of_origin(best_row, origin)
+        # Fallback: scan any row for mature head of origin
         for r in rows:
-            if engine.pop_if_mature_head(r):
+            if engine.pop_if_mature_head_of_origin(r, origin):
                 return True
         return False
 
@@ -93,6 +148,7 @@ class LongestQueueHeadConsumption:
 ALLOCATION_STRATEGIES: Dict[str, Any] = {
     'Mais espaço livre': MostFreeAllocation,
     'Round-robin por esteira': RoundRobinAllocation,
+    '3 dedicadas + dinâmico (manter lote)': DedicatedThreePlusDynamicAllocation,
 }
 
 CONSUMPTION_STRATEGIES: Dict[str, Any] = {
@@ -145,12 +201,14 @@ class SimulationEngine:
         self.allocation_strategy: AllocationStrategy = allocation_strategy or MostFreeAllocation()
         self.consumption_strategy: ConsumptionStrategy = consumption_strategy or PrioritizedFirstThreeConsumption()
 
-        # Origin to belts mapping: A→rows 0-3, B→4-7, C→8-11
+        # Origin to belts mapping (dedicated only): A→rows 0-2, B→4-6, C→8-10
+        # Global dynamic belts shared across all types: rows 3, 7, 11
         self.origin_rows = {
-            'A': list(range(0, 4)),
-            'B': list(range(4, 8)),
-            'C': list(range(8, 12)),
+            'A': [0, 1, 2],
+            'B': [4, 5, 6],
+            'C': [8, 9, 10],
         }
+        self.dynamic_rows: List[int] = [3, 7, 11]
 
         # Production scheduling
         self.activation_time = {'A': 0, 'B': self.window_minutes, 'C': 2 * self.window_minutes}
@@ -162,10 +220,10 @@ class SimulationEngine:
         # Initialize first three lots for A, B, C respectively: A1, B2, C3, then 4,5,6... globally.
         self.current_lot_id = {'A': 1, 'B': 2, 'C': 3}
         self.global_next_lot_id = 4
-        self.current_lot_remaining = {}
+        # Lot tracking: produced and outstanding counts for current lot per origin
+        self.current_lot_produced: Dict[State, int] = {'A': 0, 'B': 0, 'C': 0}
+        self.current_lot_outstanding: Dict[State, int] = {'A': 0, 'B': 0, 'C': 0}
         self.lot_size = max(1, int(2160 // self.X))  # pallets per 12h at rate X/3 min
-        for o in ['A', 'B', 'C']:
-            self.current_lot_remaining[o] = self.lot_size
 
         # Phase 2 consumption scheduling
         self.rotation = ['A', 'B', 'C']
@@ -196,12 +254,17 @@ class SimulationEngine:
                 continue
             # Attempt in a while loop if multiple productions scheduled at same minute
             while self.now >= self.next_prod_time[origin]:
+                # Decide lot for next pallet; if None, production must wait until current lot is fully consumed
+                lot_id_opt = self._assign_lot(origin)
+                if lot_id_opt is None:
+                    break
+                # Select a belt to place the pallet
                 target_row = self.allocation_strategy.select_belt(self, origin)
                 if target_row is None:
                     # Blocked; try again next minute (do not advance next_prod_time)
                     break
                 # Assign lot at creation time
-                lot_id = self._assign_lot(origin)
+                lot_id = lot_id_opt
                 pallet_id = self.next_pallet_id
                 self.next_pallet_id += 1
                 pallet = Pallet(origin, self.now, lot_id, self.maturation_minutes, pallet_id)
@@ -214,6 +277,9 @@ class SimulationEngine:
                     'consumido_min': None,
                 }
                 self.belts[target_row].append(pallet)
+                # Update lot counters
+                self.current_lot_produced[origin] += 1
+                self.current_lot_outstanding[origin] += 1
                 self.next_prod_time[origin] += self.X
 
     def _select_belt_for_origin(self, origin: State) -> Optional[int]:
@@ -230,15 +296,35 @@ class SimulationEngine:
             return None
         return best_row
 
-    def _assign_lot(self, origin: State) -> int:
-        # If the current lot for this origin is exhausted, advance to the next global lot id
-        if self.current_lot_remaining[origin] <= 0:
-            self.current_lot_id[origin] = self.global_next_lot_id
-            self.global_next_lot_id += 1
-            self.current_lot_remaining[origin] = self.lot_size
-        lot_id = self.current_lot_id[origin]
-        self.current_lot_remaining[origin] -= 1
-        return lot_id
+    def peek_next_lot_id(self, origin: State) -> Optional[int]:
+        """Decide which lot id would be used for the next produced pallet of origin.
+        Returns None if production must wait (current lot produced quota reached but not fully consumed)."""
+        produced = self.current_lot_produced[origin]
+        if produced < self.lot_size:
+            return self.current_lot_id[origin]
+        # produced quota reached; only advance if no outstanding pallets remain
+        if self.current_lot_outstanding[origin] > 0:
+            return None
+        # Can advance to a new lot
+        return self.global_next_lot_id
+
+    def _advance_lot(self, origin: State) -> None:
+        """Advance current lot for origin to the next global lot and reset counters."""
+        self.current_lot_id[origin] = self.global_next_lot_id
+        self.global_next_lot_id += 1
+        self.current_lot_produced[origin] = 0
+        self.current_lot_outstanding[origin] = 0
+
+    def _assign_lot(self, origin: State) -> Optional[int]:
+        """Return the lot id to assign for the next pallet of origin, or None if production must wait.
+        This function may advance to a new lot if the previous one is complete and fully consumed."""
+        nxt = self.peek_next_lot_id(origin)
+        if nxt is None:
+            return None
+        # If we're moving to a new lot, advance state
+        if nxt != self.current_lot_id[origin]:
+            self._advance_lot(origin)
+        return self.current_lot_id[origin]
 
     # ---- Phase 2: Window scheduler and consumption ----
     def _maybe_start_window(self) -> None:
@@ -274,27 +360,30 @@ class SimulationEngine:
 
     def _count_ready_by_end(self, origin: State, end_time: int) -> int:
         cnt = 0
-        for r in self.origin_rows[origin]:
+        rows = self.origin_rows[origin] + self.dynamic_rows
+        for r in rows:
             for p in self.belts[r]:
-                if p.t_mature <= end_time:
+                if p.origin == origin and p.t_mature <= end_time:
                     cnt += 1
         return cnt
 
     def _count_mature_until(self, origin: State, t: int) -> int:
-        """Count pallets of origin with t_mature <= t."""
+        """Count pallets of origin with t_mature <= t across dedicated and dynamic rows."""
         cnt = 0
-        for r in self.origin_rows[origin]:
+        rows = self.origin_rows[origin] + self.dynamic_rows
+        for r in rows:
             for p in self.belts[r]:
-                if p.t_mature <= t:
+                if p.origin == origin and p.t_mature <= t:
                     cnt += 1
         return cnt
 
     def _count_maturing_in_window(self, origin: State, start: int, end: int) -> int:
-        """Count pallets of origin that mature in (start, end] interval."""
+        """Count pallets of origin that mature in (start, end] interval across dedicated and dynamic rows."""
         cnt = 0
-        for r in self.origin_rows[origin]:
+        rows = self.origin_rows[origin] + self.dynamic_rows
+        for r in rows:
             for p in self.belts[r]:
-                if start < p.t_mature <= end:
+                if p.origin == origin and start < p.t_mature <= end:
                     cnt += 1
         return cnt
 
@@ -336,12 +425,34 @@ class SimulationEngine:
             rec = self.pallet_records.get(popped.pallet_id)
             if rec is not None and rec.get('consumido_min') is None:
                 rec['consumido_min'] = self.now
+            # Decrement outstanding for the origin's current lot when applicable
+            origin = popped.origin
+            if popped.lot_id == self.current_lot_id[origin] and self.current_lot_outstanding[origin] > 0:
+                self.current_lot_outstanding[origin] -= 1
             return True
         return False
 
-    # Public wrapper for strategies
+    # Public wrappers for strategies
     def pop_if_mature_head(self, row: int) -> bool:
         return self._pop_if_mature_head(row)
+
+    def pop_if_mature_head_of_origin(self, row: int, origin: State) -> bool:
+        if not self.belts[row]:
+            return False
+        head = self.belts[row][0]
+        if head.origin != origin:
+            return False
+        if head.is_mature(self.now):
+            popped = self.belts[row].pop(0)
+            # Record consumption time for CSV export
+            rec = self.pallet_records.get(popped.pallet_id)
+            if rec is not None and rec.get('consumido_min') is None:
+                rec['consumido_min'] = self.now
+            # Decrement outstanding for the origin's current lot when applicable
+            if popped.lot_id == self.current_lot_id[origin] and self.current_lot_outstanding[origin] > 0:
+                self.current_lot_outstanding[origin] -= 1
+            return True
+        return False
 
     # ---- View helper ----
     def grid_as_cells(self) -> GridData:
