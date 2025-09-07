@@ -22,6 +22,7 @@ class ConsumptionStrategy(Protocol):
 # ---- Default and extra strategies ----
 class MostFreeAllocation:
     """Pick the belt within origin rows with the most free space; tie-break by lowest row index."""
+
     def select_belt(self, engine: 'SimulationEngine', origin: State) -> Optional[int]:
         rows = engine.origin_rows[origin]
         best_row = None
@@ -38,6 +39,7 @@ class MostFreeAllocation:
 
 class RoundRobinAllocation:
     """Cycle through origin rows round-robin, picking the next row with free space."""
+
     def __init__(self):
         self._next_index: Dict[State, int] = {'A': 0, 'B': 0, 'C': 0}
 
@@ -56,38 +58,36 @@ class RoundRobinAllocation:
 
 class DedicatedThreePlusDynamicAllocation:
     """
-    3 dedicated belts per type, plus shared dynamic belts (rows 3,7,11) allocated according to need.
-    Always prioritize keeping pallets of the same lot on the same belt (lot stickiness).
-    Selection order:
-      1) Any belt (dedicated or dynamic) that already contains the next lot id and has free space.
-      2) Dedicated belts: pick the one with most free space.
-      3) Dynamic belts (shared): pick the one with most free space.
+    Prioritize dynamic belts for allocation with specific mapping:
+      - Origin A: prefer dynamic belts 9 and 10 (two belts), then 11; fallback to dedicated if needed.
+      - Origin B: prefer dynamic belt 11 (one belt); fallback to dedicated if needed.
+      - Origin C: use dedicated belts; fallback to dynamic only if all dedicated are full.
+    Maintain lot stickiness within the preferred set: if any preferred belt already contains the next lot and has free space, use it.
+    Otherwise, pick the one with most free space within the preferred set; then fallback to dedicated.
     """
+
     def select_belt(self, engine: 'SimulationEngine', origin: State) -> Optional[int]:
         dedicated = engine.origin_rows[origin]
-        dynamic = engine.dynamic_rows
-        rows = dedicated + dynamic
-        if not dedicated:
-            return None
         capacity = engine.capacity_per_belt
-        # Infer next lot id without mutating engine state
+
+        # Determine preferred dynamic belts per origin according to requirement
+        if origin == 'A':
+            # Para A: usar 2 esteiras dinâmicas (9 e 10) até completar 44 itens (2x22).
+            # Depois disso, começar a inserir nas dedicadas (mantendo regra de não misturar).
+            if engine.current_lot_produced['A'] < 44:
+                preferred_dynamic: List[int] = [9, 10]
+            else:
+                preferred_dynamic = []
+        elif origin == 'B':
+            preferred_dynamic = [11]
+        else:  # 'C' or others
+            preferred_dynamic = []
+
+        # Infer next lot id without mutating engine state (for stickiness)
         next_lot = engine.peek_next_lot_id(origin)
         if next_lot is None:
             next_lot = engine.current_lot_id[origin]
-        # 1) Prefer belts that already contain the same lot and have free space
-        candidates_same_lot: List[int] = []
-        for r in rows:
-            belt = engine.belts[r]
-            if len(belt) >= capacity:
-                continue
-            # Check if any pallet on this belt belongs to the next lot
-            has_same_lot = any(p.lot_id == next_lot and p.origin == origin for p in belt)
-            if has_same_lot:
-                candidates_same_lot.append(r)
-        if candidates_same_lot:
-            # Choose with most free space; tie-break by lower row index
-            best_row = max(candidates_same_lot, key=lambda rr: (capacity - len(engine.belts[rr]), -rr))
-            return best_row
+
         # Helper to select most free from a list of rows
         def select_most_free(from_rows: List[int]) -> Optional[int]:
             best_r = None
@@ -100,16 +100,37 @@ class DedicatedThreePlusDynamicAllocation:
             if best_free <= 0:
                 return None
             return best_r
-        # 2) Dedicated belts
+
+        # 1) Try preferred dynamic belts first, keeping lot stickiness
+        if preferred_dynamic:
+            candidates_same_lot: List[int] = []
+            for r in preferred_dynamic:
+                belt = engine.belts[r]
+                if len(belt) >= capacity:
+                    continue
+                if any(p.lot_id == next_lot and p.origin == origin for p in belt):
+                    candidates_same_lot.append(r)
+            if candidates_same_lot:
+                best_row = max(candidates_same_lot, key=lambda rr: (capacity - len(engine.belts[rr]), -rr))
+                return best_row
+            # Otherwise pick the most free among preferred dynamic belts
+            pick = select_most_free(preferred_dynamic)
+            if pick is not None:
+                return pick
+
+        # 2) Fallback to dedicated belts (most free)
         pick = select_most_free(dedicated)
         if pick is not None:
             return pick
-        # 3) Dynamic belts (shared)
-        return select_most_free(dynamic)
+
+        # 3) As a last resort (e.g., for 'C' when dedicated are full), allow any remaining dynamic belts
+        remaining_dynamic = [r for r in engine.dynamic_rows if r not in preferred_dynamic]
+        return select_most_free(remaining_dynamic)
 
 
 class PrioritizedFirstThreeConsumption:
     """Try dedicated belts first, then shared dynamic belts; consume only head pallets of the active origin that are mature."""
+
     def consume(self, engine: 'SimulationEngine', origin: State) -> bool:
         # Dedicated rows for this origin
         for r in engine.origin_rows[origin]:
@@ -124,6 +145,7 @@ class PrioritizedFirstThreeConsumption:
 
 class LongestQueueHeadConsumption:
     """Pick the belt (dedicated or dynamic) with the longest queue whose head is a mature pallet of the active origin; fallback scanning with origin check."""
+
     def consume(self, engine: 'SimulationEngine', origin: State) -> bool:
         rows = engine.origin_rows[origin] + engine.dynamic_rows
         # Find rows with mature head of the same origin
@@ -144,14 +166,58 @@ class LongestQueueHeadConsumption:
         return False
 
 
+class DynamicLeastFreeSpaceConsumption:
+    """Novo algoritmo: consumir prioritariamente das esteiras dinâmicas e sempre daquela com menos espaços vagos.
+    Regras:
+      - Considerar apenas filas cujo head é do origin ativo e está maduro.
+      - Prioridade 1: esteiras dinâmicas (engine.dynamic_rows).
+      - Prioridade 2: esteiras dedicadas do origin.
+      - Dentro da prioridade, escolher a esteira com MENOS espaços vagos (ou seja, com mais itens na fila).
+        Espaços vagos = capacidade - tamanho atual da fila.
+      - Empate: menor índice de linha.
+    """
+
+    def consume(self, engine: 'SimulationEngine', origin: State) -> bool:
+        capacity = engine.capacity_per_belt
+
+        def pick_row(rows: List[int]) -> Optional[int]:
+            best_r = None
+            best_metric = None  # menor espaços vagos
+            for r in rows:
+                belt = engine.belts[r]
+                if not belt:
+                    continue
+                head = belt[0]
+                if head.origin != origin or not head.is_mature(engine.now):
+                    continue
+                free = capacity - len(belt)
+                metric = (free, r)  # ordenar por menos free, depois por menor índice
+                if best_metric is None or metric < best_metric:
+                    best_metric = metric
+                    best_r = r
+            return best_r
+
+        # 1) tentar dinâmicas primeiro
+        r = pick_row(engine.dynamic_rows)
+        if r is not None:
+            return engine.pop_if_mature_head_of_origin(r, origin)
+        # 2) depois dedicadas
+        r = pick_row(engine.origin_rows[origin])
+        if r is not None:
+            return engine.pop_if_mature_head_of_origin(r, origin)
+        return False
+
+
 # Registries for GUI usage
 ALLOCATION_STRATEGIES: Dict[str, Any] = {
+    '3 dedicadas + dinâmico (manter lote)': DedicatedThreePlusDynamicAllocation,
     'Mais espaço livre': MostFreeAllocation,
     'Round-robin por esteira': RoundRobinAllocation,
-    '3 dedicadas + dinâmico (manter lote)': DedicatedThreePlusDynamicAllocation,
+
 }
 
 CONSUMPTION_STRATEGIES: Dict[str, Any] = {
+    'Dinâmicas com menos espaços vagos (padrão)': DynamicLeastFreeSpaceConsumption,
     'Priorizar 3 primeiras': PrioritizedFirstThreeConsumption,
     'Cabeça mais longa': LongestQueueHeadConsumption,
 }
@@ -199,16 +265,17 @@ class SimulationEngine:
 
         # Strategy selection (defaults if none provided)
         self.allocation_strategy: AllocationStrategy = allocation_strategy or MostFreeAllocation()
-        self.consumption_strategy: ConsumptionStrategy = consumption_strategy or PrioritizedFirstThreeConsumption()
+        self.consumption_strategy: ConsumptionStrategy = consumption_strategy or DynamicLeastFreeSpaceConsumption()
 
         # Origin to belts mapping (dedicated only): A→rows 0-2, B→4-6, C→8-10
         # Global dynamic belts shared across all types: rows 3, 7, 11
         self.origin_rows = {
             'A': [0, 1, 2],
-            'B': [4, 5, 6],
-            'C': [8, 9, 10],
+            'B': [3, 4, 5],
+            'C': [6, 7, 8],
         }
-        self.dynamic_rows: List[int] = [3, 7, 11]
+        self.dynamic_rows: List[int] = [9, 10, 11]
+        # Para impedir mistura: consideramos a fila "ocupada" por um lote enquanto o último inserido tiver um lote diferente
 
         # Production scheduling
         self.activation_time = {'A': 0, 'B': self.window_minutes, 'C': 2 * self.window_minutes}
@@ -216,7 +283,7 @@ class SimulationEngine:
                                'B': self.activation_time['B'],
                                'C': self.activation_time['C']}
 
-        # Lot management with global sequential lots (no per-type segregation)
+        # Lot management with global sequential lots (n2160o per-type segregation)
         # Initialize first three lots for A, B, C respectively: A1, B2, C3, then 4,5,6... globally.
         self.current_lot_id = {'A': 1, 'B': 2, 'C': 3}
         self.global_next_lot_id = 4
@@ -231,6 +298,7 @@ class SimulationEngine:
         self.active_origin: Optional[State] = None
         self.window_end_time: int = 0
         self.next_consume_time: int = 0
+        self.window_consumed: int = 0  # pallets consumed in the current window
 
     @property
     def consumption_tick(self) -> float:
@@ -276,6 +344,21 @@ class SimulationEngine:
                     'criado_min': self.now,
                     'consumido_min': None,
                 }
+                # Regra: não misturar itens na mesma fila: permitir inserir se fila vazia ou último item é do mesmo lote
+                belt = self.belts[target_row]
+                if belt and belt[-1].lot_id != lot_id:
+                    # tentar outra esteira compatível
+                    alt_row = self.allocation_strategy.select_belt(self, origin)
+                    if alt_row is not None and alt_row != target_row:
+                        target_row = alt_row
+                        belt = self.belts[target_row]
+                # se ainda assim mistura, bloquear produção neste minuto
+                if belt and belt[-1].lot_id != lot_id:
+                    # não avança next_prod_time; sai do while para tentar depois
+                    self.next_pallet_id -= 1
+                    # rollback record allocation placeholders
+                    del self.pallet_records[pallet_id]
+                    return
                 self.belts[target_row].append(pallet)
                 # Update lot counters
                 self.current_lot_produced[origin] += 1
@@ -317,16 +400,48 @@ class SimulationEngine:
 
     def _assign_lot(self, origin: State) -> Optional[int]:
         """Return the lot id to assign for the next pallet of origin, or None if production must wait.
-        This function may advance to a new lot if the previous one is complete and fully consumed."""
+        Regra: não misturar lotes na mesma fila. Só iniciar um novo lote quando o anterior começar a ser consumido,
+        e, para A, após completar 2 esteiras (44 itens) deve iniciar nas dedicadas.
+        Implementação: só avança de lote se o lote atual já teve ao menos 1 pallet consumido (outstanding < produced),
+        ou se produced == 0 (primeiro lote)."""
+        # Se já estamos no primeiro pallet do primeiro lote, mantém
+        produced = self.current_lot_produced[origin]
+        outstanding = self.current_lot_outstanding[origin]
+        # Bloqueia avanço de lote até iniciar consumo do atual
+        if produced >= self.lot_size and outstanding == produced:
+            # lote completo mas nenhum consumido ainda -> aguardar
+            return None
+        # Política padrão de avanço quando possível
         nxt = self.peek_next_lot_id(origin)
         if nxt is None:
             return None
-        # If we're moving to a new lot, advance state
         if nxt != self.current_lot_id[origin]:
-            self._advance_lot(origin)
+            # Permitir avanço apenas se já houve consumo do lote atual (outstanding < produced)
+            if outstanding < produced:
+                self._advance_lot(origin)
+            else:
+                return None
         return self.current_lot_id[origin]
 
     # ---- Phase 2: Window scheduler and consumption ----
+    def _get_current_lot_last_mature(self, origin: State) -> Optional[int]:
+        """Return the max t_mature among pallets of the current lot for the given origin, or None if none found."""
+        lot_id = self.current_lot_id[origin]
+        last = None
+        rows = self.origin_rows[origin] + self.dynamic_rows
+        for r in rows:
+            for p in self.belts[r]:
+                if p.origin == origin and p.lot_id == lot_id:
+                    if last is None or p.t_mature > last:
+                        last = p.t_mature
+        return last
+
+    def _is_current_lot_fully_produced_and_unconsumed(self, origin: State) -> bool:
+        """Lot must have all pallets produced and none consumed yet (so outstanding == produced == lot_size)."""
+        produced = self.current_lot_produced[origin]
+        outstanding = self.current_lot_outstanding[origin]
+        return produced >= self.lot_size and outstanding == produced
+
     def _maybe_start_window(self) -> None:
         if self.active_origin is not None and self.now < self.window_end_time:
             return
@@ -336,17 +451,18 @@ class SimulationEngine:
             self.rotation_idx = (self.rotation_idx + 1) % len(self.rotation)
             self.active_origin = None
         origin = self.rotation[self.rotation_idx]
-        # Check trigger using two criteria:
-        # 1) Enough mature at start: mature_now >= ceil(1440 / X)
-        # 2) Enough by end of window: mature_now + maturing_in_window >= lot_size
-        start_needed = (1440 + self.X - 1) // self.X  # ceil(1440 / X)
-        mature_now = self._count_mature_until(origin, self.now)
-        maturing_in_window = self._count_maturing_in_window(origin, self.now, self.now + self.window_minutes)
-        total_ready_by_end = mature_now + maturing_in_window
-        if mature_now >= start_needed and total_ready_by_end >= self.lot_size:
+        # New rule: start only when 12h remain to the last pallet maturation of the lot
+        if not self._is_current_lot_fully_produced_and_unconsumed(origin):
+            return
+        t_last = self._get_current_lot_last_mature(origin)
+        if t_last is None:
+            return
+        target_start = t_last - self.window_minutes
+        if self.now >= target_start:
             self.active_origin = origin
             self.window_end_time = self.now + self.window_minutes
             self.next_consume_time = self.now  # start immediately
+            self.window_consumed = 0  # reset consumed counter for this window
             # Emit event for UI logging
             self.events.append({
                 'type': 'window_start',
@@ -355,7 +471,7 @@ class SimulationEngine:
                 'lot_size': self.lot_size
             })
         else:
-            # Not enough; keep waiting (do nothing this minute)
+            # Not time yet based on last-mature timing rule; wait
             pass
 
     def _count_ready_by_end(self, origin: State, end_time: int) -> int:
@@ -391,11 +507,25 @@ class SimulationEngine:
         if self.active_origin is None:
             return
         if self.now < self.next_consume_time or self.now > self.window_end_time:
+            # Last-chance at window boundary: if we're exactly at the end minute and still missing items,
+            # try to consume one more pallet ignoring the time spacing. This avoids leaving 1 item behind
+            # due to fractional consumption tick rounding.
+            if self.active_origin is not None and self.now == self.window_end_time and self.window_consumed < self.lot_size:
+                if self.consumption_strategy.consume(self, self.active_origin):
+                    self.window_consumed += 1
+                    if self.window_consumed >= self.lot_size:
+                        self.window_end_time = self.now
             return
         origin = self.active_origin
         popped = self.consumption_strategy.consume(self, origin)
         if popped:
+            # track how many consumed in this window
+            self.window_consumed += 1
             self.next_consume_time += self.consumption_tick
+            # If we've consumed a full lot, close the window immediately
+            if self.window_consumed >= self.lot_size:
+                # End window now so next minute rotation can proceed
+                self.window_end_time = self.now
         else:
             # If cannot consume now (no mature at heads), just wait to next minute
             # Do not advance next_consume_time; we'll try again next minute

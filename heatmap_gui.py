@@ -125,6 +125,11 @@ class HeatmapApp(tk.Tk):
         self.timer_label = tk.Label(self.controls_frame, text="0d 00:00", font=("Arial", 11, "bold"), bg="#f0f0f0")
         self.timer_label.pack(side=tk.RIGHT)
 
+        # Lot size label (updated when simulation starts)
+        self.lot_size_var = tk.StringVar(value="Tamanho do lote: -")
+        self.lot_size_label = tk.Label(self.controls_frame, textvariable=self.lot_size_var, bg="#f0f0f0")
+        self.lot_size_label.pack(side=tk.RIGHT, padx=(10, 0))
+
         # Runtime state for scheduling
         self.running: bool = False
         self._cycle_after_id: Optional[str] = None
@@ -578,6 +583,11 @@ class HeatmapApp(tk.Tk):
                     self.engine.allocation_strategy = alloc
                 if cons is not None:
                     self.engine.consumption_strategy = cons
+            # Update lot size label
+            try:
+                self.lot_size_var.set(f"Tamanho do lote: {self.engine.lot_size}")
+            except Exception:
+                self.lot_size_var.set("Tamanho do lote: -")
             # Log which strategies are active for transparency/debugging
             try:
                 a_idx = self.alloc_combo.current()
@@ -634,6 +644,11 @@ class HeatmapApp(tk.Tk):
         self.timer_label.configure(text=self._format_minutes(0.0))
         # Reset simulation engine (new X may apply)
         self.engine = None
+        # Reset lot size label
+        try:
+            self.lot_size_var.set("Tamanho do lote: -")
+        except Exception:
+            pass
         # Reset the grid to vazio
         initial_grid: GridData = [[('vazio', 0) for _ in range(self.COLS)] for _ in range(self.ROWS)]
         self.update_grid(initial_grid)
