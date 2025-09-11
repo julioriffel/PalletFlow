@@ -15,14 +15,32 @@ print(CONSUMING_TIME_MIN, LOTE_SIZE, CYCLE_BY_LOT, MATURATE_CICLE)
 lots = []
 consuming_lot = None
 
+# Generators for lot and pallet numbers
+LOT_COUNTER = 0
+PALLET_COUNTER = 0
+
+
+def next_lot_id():
+    global LOT_COUNTER
+    LOT_COUNTER += 1
+    return LOT_COUNTER
+
+
+def next_pallet_id():
+    global PALLET_COUNTER
+    PALLET_COUNTER += 1
+    return PALLET_COUNTER
+
 
 class Pallet(object):
     type: str
     created_time: int
+    id: int
 
     def __init__(self, type, created_time):
         self.type = type
         self.created_time = created_time
+        self.id = next_pallet_id()
 
     @property
     def mature_time(self):
@@ -40,7 +58,7 @@ class Lot(object):
     creation_finished: bool = False
 
     def __init__(self, type, creating_time):
-        self.id = len(lots) + 1
+        self.id = next_lot_id()
         self.pallets = []
         self.type = type
         self.creating_time = creating_time
@@ -65,7 +83,7 @@ class Lot(object):
         return pallet
 
     def __str__(self):
-        return f"Lot {self.type}-{self.id} created at {self.creating_time} has {len(self.pallets)} pallets"
+        return f"{self.type}-{self.id}[{len(self.pallets)}]"
 
 
 def add_pallet_to_lot(pallet: Pallet):
@@ -97,6 +115,7 @@ def create_pallet(seq) -> Pallet | None:
 
 
 def consuming(cycle):
+    
     global consuming_lot
     if consuming_lot is None:
         # pick first non-empty lot, if any
@@ -110,12 +129,15 @@ def consuming(cycle):
     while pallet is None:
         try:
             current_lot_index = lots.index(consuming_lot)
+            # Remove the current lot if it's empty
+            if not consuming_lot.pallets:
+                lots.pop(current_lot_index)
         except ValueError:
             # consuming_lot no longer in lots (shouldn't happen, but guard anyway)
             consuming_lot = None
             return None
         next_lot = None
-        for i in range(current_lot_index + 1, len(lots)):
+        for i in range(current_lot_index, len(lots)):
             if lots[i].pallets:
                 next_lot = lots[i]
                 break
@@ -135,16 +157,15 @@ def count_mature_pallets(lot, cycle):
     return count
 
 
-for cycle in range(1, 5001):
+for cycle in range(1, 501):
     pallet = create_pallet(cycle)
 
     if pallet:
         add_pallet_to_lot(pallet)
 
     if lots:
-        print(count_mature_pallets(lots[0], cycle), cycle)
+        print(cycle, lots[0], count_mature_pallets(lots[0], cycle))
     else:
         print(0, cycle)
-
     if cycle > 328:
         consuming(cycle)
