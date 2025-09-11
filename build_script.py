@@ -47,7 +47,7 @@ class Pallet(object):
         return self.created_time + MATURATE_CICLE
 
     def __str__(self):
-        return f"Pallet {self.type} created at {self.created_time} will mature at {self.mature_time}"
+        return f"P {self.type}{self.id} {self.created_time}/{self.mature_time}"
 
 
 class Lot(object):
@@ -83,7 +83,7 @@ class Lot(object):
         return pallet
 
     def __str__(self):
-        return f"{self.type}-{self.id}[{len(self.pallets)}]"
+        return f"L{self.type}-{self.id}[{len(self.pallets)}]"
 
 
 def add_pallet_to_lot(pallet: Pallet):
@@ -115,7 +115,6 @@ def create_pallet(seq) -> Pallet | None:
 
 
 def consuming(cycle):
-    
     global consuming_lot
     if consuming_lot is None:
         # pick first non-empty lot, if any

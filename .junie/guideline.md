@@ -1,6 +1,6 @@
 # Simulação da Linha de Produção — Explicação do Algoritmo de Cálculo (PT-BR)
 
-Este projeto simula uma linha de produção com duas fases e um pulmão de maturação em esteiras. 
+Este projeto simula uma linha de produção com duas fases e um pulmão de maturação em esteiras.
 
 ## Premissas e parâmetros
 - Fase 1 (produção): 3 máquinas (A, B, C), cada uma produz 1 pallet a cada X minutos.

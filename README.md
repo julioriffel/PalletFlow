@@ -104,3 +104,25 @@ poetry install
 
 ## Licença
 Defina uma licença para este projeto (por exemplo, MIT, Apache-2.0). Atualize esta seção conforme necessário.
+
+## Qualidade de código: pre-commit e Ruff
+Este repositório usa pre-commit + Ruff para lint e formatação automática.
+
+Instalação (via Poetry):
+```bash
+poetry install
+poetry run pre-commit install  # instala o hook do git
+```
+
+Uso manual:
+```bash
+# Rodar em todos os arquivos
+poetry run pre-commit run --all-files
+
+# Apenas Ruff linter + fix
+poetry run ruff check --fix .
+# Apenas formatar
+poetry run ruff format .
+```
+
+A configuração do Ruff está em `pyproject.toml` e os hooks em `.pre-commit-config.yaml`.
