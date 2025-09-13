@@ -14,8 +14,8 @@ print(CONSUMING_TIME_MIN, LOTE_SIZE, CYCLE_BY_LOT, MATURATE_CICLE)
 
 lots = []
 consuming_lot = None
-dynamical_lot = []
-storage_lines = []
+dynamical_lot_ids = []
+fix_storage_lines = []
 dynamic_storage_lines = []
 
 # Generators for lot and pallet numbers
@@ -52,6 +52,9 @@ class Pallet(object):
     def __str__(self):
         return f"P{self.source}{self.id} [{self.created_time}/{self.mature_time}]"
 
+    def simple(self, cycle):
+        return f"P{self.source}{'*' if cycle >= self.mature_time else ''}{self.id}"
+
 
 class Lot(object):
     id: int
@@ -71,22 +74,15 @@ class Lot(object):
         if len(self.pallets) == LOTE_SIZE:
             self.creation_finished = True
 
-    def get_next_pallet(self, cycle=None):
-        # Return the next pallet only if available and mature.
-        if not self.pallets:
-            print(f"Cycle: {cycle} {self.source}-{self.id} EMPTY")
-            return None
-        pallet = self.pallets[0]
-        print(f"Cycle: {cycle} {self.source}-{self.id} {pallet.mature_time} ")
-        if cycle is not None and pallet.mature_time > cycle:
-            # Head is not mature yet; do not pop.
-            return None
-        # Head exists and is mature (or cycle not provided): consume it.
-        self.pallets.pop(0)
-        return pallet
-
     def __str__(self):
         return f"{self.source}-{self.id}[{len(self.pallets)}]"
+
+    def count_mature_pallets(self, cycle):
+        count = 0
+        for pallet in self.pallets:
+            if pallet.mature_time <= cycle:
+                count += 1
+        return count
 
 
 class StorageLine:
@@ -98,11 +94,7 @@ class StorageLine:
         self.pallets: list[Pallet] = []
 
     def __str__(self):
-        return (
-            f"S{self.id}[{self.active_lot if self.active_lot else ''}/"
-            f"{self.active_source if self.active_source else ''}]"
-            f"[{len(self.pallets)}]"
-        )
+        return f"S{self.id}[{self.active_lot if self.active_lot else self.active_source}][{len(self.pallets)}]"
 
     def count_mature_items(self, source: str, cycle: int) -> int:
         return sum(1 for p in self.pallets if p.source == source and p.mature_time <= cycle)
@@ -119,6 +111,7 @@ class StorageLine:
         if self.active_source is None:
             self.active_source = pallet.source
         self.pallets.append(pallet)
+        print(self, "ADD", pallet)
         return True
 
     def consume_pallet(self, cycle: int) -> Pallet | None:
@@ -127,15 +120,36 @@ class StorageLine:
         pallet = self.pallets[0]
         if pallet.mature_time > cycle:
             return None
-        return self.pallets.pop(0)
+        pallet = self.pallets.pop(0)
+        print(self, "CONSUME", pallet)
+        return pallet
+
+    def print_resume(self):
+        output = str(self)
+        for p in self.pallets:
+            output += f"| {p.simple(cycle)}"
+        print(output)
 
 
-def atribute_dynamic_lines():
+def assign_dynamic_lines(remove_lot=None):
+    if remove_lot:
+        for line in dynamic_storage_lines:
+            if line.active_lot <= remove_lot:
+                line.active_lot = None
+
+    for lot in lots:
+        if lot.creation_finished:
+            for line in dynamic_storage_lines:
+                if line.active_lot <= lot.id:
+                    line.active_lot = None
+
     for line in dynamic_storage_lines:
         if line.active_lot is None:
-            line.active_lot = dynamical_lot.pop(0) if dynamical_lot else None
+            line.active_lot = dynamical_lot_ids.pop(0) if dynamical_lot_ids else None
 
-            print("DL", line.id, line.active_lot)
+            if line.active_lot:
+                line.active_source = next((lot.source for lot in lots if lot.id == line.active_lot), None)
+                print("Dynamic Line Assigned line:", line.id, line.active_lot)
 
 
 def add_pallet_to_lot(pallet: Pallet):
@@ -147,16 +161,17 @@ def add_pallet_to_lot(pallet: Pallet):
 
     if clot is None:
         clot = Lot(source=pallet.source, creating_time=pallet.created_time)
+        print("New lot created:", clot)
         # Remove old lot IDs for the same source
-        dynamical_lot[:] = [
+        dynamical_lot_ids[:] = [
             lot_id
-            for lot_id in dynamical_lot
+            for lot_id in dynamical_lot_ids
             if next((lot for lot in lots if lot.id == lot_id), None).source != pallet.source
         ]
 
-        dynamical_lot.append(clot.id)
-        dynamical_lot.append(clot.id)
-        atribute_dynamic_lines()
+        dynamical_lot_ids.append(clot.id)
+        dynamical_lot_ids.append(clot.id)
+        assign_dynamic_lines()
         lots.append(clot)
 
     clot.add_pallet(pallet)
@@ -176,93 +191,95 @@ def create_pallet(seq) -> Pallet | None:
     return Pallet(source_pallet, seq)
 
 
-# def consuming(cycle):
-#     global consuming_lot
-#     if consuming_lot is None:
-#         # pick first non-empty lot, if any
-#         consuming_lot = next((lot for lot in lots if lot.pallets), None)
-#         if consuming_lot is None:
-#             return None
-#
-#     pallet = consuming_lot.get_next_pallet(cycle=cycle)
-#
-#     # If nothing consumable from current lot, try to advance to the next lot with pallets.
-#     while pallet is None:
-#         try:
-#             current_lot_index = lots.index(consuming_lot)
-#             # Remove the current lot if it's empty
-#             if not consuming_lot.pallets:
-#                 lots.pop(current_lot_index)
-#         except ValueError:
-#             # consuming_lot no longer in lots (shouldn't happen, but guard anyway)
-#             consuming_lot = None
-#             return None
-#         next_lot = None
-#         for i in range(current_lot_index, len(lots)):
-#             if lots[i].pallets:
-#                 next_lot = lots[i]
-#                 break
-#         if next_lot is None:
-#             consuming_lot = None
-#             return None
-#         consuming_lot = next_lot
-#         pallet = consuming_lot.get_next_pallet(cycle=cycle)
-#     return pallet
-#
-
-
-def find_first_mature_pallet(cycle: int) -> tuple[Pallet, StorageLine] | None:
-    # Check dynamic storage lines first
-    for line in dynamic_storage_lines:
-        pallet = line.consume_pallet(cycle)
-        if pallet:
-            return pallet, line
-
-    # Then check regular storage lines
-    for line in storage_lines:
-        pallet = line.consume_pallet(cycle)
-        if pallet:
-            return pallet, line
-
+def consuming_by_storage(consuming_lot, cycle):
+    # Check all storage lines for mature pallets from consuming lot
+    for line in fix_storage_lines:
+        if line.active_source == consuming_lot.source:
+            pallet = line.consume_pallet(cycle)
+            if pallet is not None:
+                return pallet
     return None
+
+
+def consuming_by_dynamic(consuming_lot, cycle):
+    mature_lines = []
+
+    # Check all dynamic storage lines for mature pallets from consuming lot
+    for line in dynamic_storage_lines:
+        if line.pallets and line.pallets[0].source == consuming_lot.source and line.pallets[0].mature_time <= cycle:
+            mature_lines.append(line)
+
+    if not mature_lines:
+        return None
+
+    # If multiple lines have mature pallets, choose the one with least empty spaces
+    if len(mature_lines) > 1:
+        mature_lines.sort(key=lambda x: x.active_lot)
+    if len(mature_lines) > 1:
+        mature_lines.sort(key=lambda x: x.count_empty_spaces())
+
+    # Consume from the selected line
+    return mature_lines[0].consume_pallet(cycle)
+
+
+def update_consuming_lot():
+    global consuming_lot
+    consuming_lot = lots.pop(0) if lots else None
+    if consuming_lot is not None:
+        assign_dynamic_lines(remove_lot=consuming_lot.id)
+    return consuming_lot
 
 
 def consuming(cycle):
-    result = find_first_mature_pallet(cycle)
-    if result:
-        pallet, line = result
-        print(f"Consumed {pallet} from {line}")
-        if not line.pallets and line in dynamic_storage_lines:
-            line.active_source = None
-            line.active_lot = None
-        return pallet
-    return None
+    global consuming_lot
 
-
-def count_mature_pallets(lot, cycle):
-    count = 0
-    for pallet in lot.pallets:
-        if pallet.mature_time <= cycle:
-            count += 1
-    return count
+    if consuming_lot is None:
+        # pick first non-empty lot, if any
+        consuming_lot = update_consuming_lot()
+        if consuming_lot is None:
+            return None
+    pallet = None
+    if storage_source_is_full(consuming_lot.source):
+        pallet = consuming_by_storage(consuming_lot, cycle)
+    if pallet is None:
+        pallet = consuming_by_dynamic(consuming_lot, cycle)
+    if pallet is None:
+        pallet = consuming_by_storage(consuming_lot, cycle)
+    if pallet is None:
+        consuming_lot = update_consuming_lot()
+        print_full_resume(cycle)
+        pallet = consuming(cycle)
+    return pallet
 
 
 def alocate_to_dynamic_storage(lot, pallet):
     for line in dynamic_storage_lines:
-        if line.active_lot == lot.id and line.can_add_pallet(pallet):
-            line.add_pallet(pallet)
-            print(line, "ADD", pallet)
+        if line.active_lot == lot.id and line.add_pallet(pallet):
             return True
 
 
 def alocate_to_storage(pallet):
     # Try to find a storage line already containing the same source
-    for line in storage_lines:
+    for line in fix_storage_lines:
         if line.active_source == pallet.source and line.can_add_pallet(pallet):
             line.add_pallet(pallet)
-            print(line, "ADD", pallet)
             return True
     return False
+
+
+def storage_source_is_full(source):
+    for line in fix_storage_lines:
+        if line.active_source == source and line.count_empty_spaces() > 0:
+            return False
+    return True
+
+
+def print_full_resume(cycle=None):
+    print(f"Resume cycle: {cycle}")
+    for line in dynamic_storage_lines:
+        line.print_resume()
+    for line in fix_storage_lines:
+        line.print_resume()
 
 
 if __name__ == "__main__":
@@ -272,7 +289,7 @@ if __name__ == "__main__":
         StorageLine(id=2, size=storage_size),
         StorageLine(id=3, size=storage_size),
     ]
-    storage_lines = [
+    fix_storage_lines = [
         StorageLine(id=4, size=storage_size, active_source="A"),
         StorageLine(id=5, size=storage_size, active_source="A"),
         StorageLine(id=6, size=storage_size, active_source="A"),
@@ -284,8 +301,8 @@ if __name__ == "__main__":
         StorageLine(id=12, size=storage_size, active_source="C"),
     ]
 
-    for cycle in range(1, 501):
-        if cycle > 328:
+    for cycle in range(1, 399):
+        if cycle >= 328:
             consuming(cycle)
 
         pallet = create_pallet(cycle)
@@ -294,6 +311,8 @@ if __name__ == "__main__":
             lot = add_pallet_to_lot(pallet)
             if not alocate_to_dynamic_storage(lot, pallet):
                 if not alocate_to_storage(pallet):
-                    atribute_dynamic_lines()
+                    assign_dynamic_lines()
                     if not alocate_to_dynamic_storage(lot, pallet):
-                        print(f"Failed to allocate {pallet} to dynamic storage")
+                        print_full_resume(cycle)
+                        print(f"Failed to allocate {lot} {pallet} to dynamic storage")
+                        print("--")
